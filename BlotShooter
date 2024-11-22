@@ -1,0 +1,223 @@
+''' you can choose the level of difficulty and there is a rainbow mode every five times you shoot'''
+from cmu_graphics import *
+import random
+
+def onAppStart(app):
+    app.width = 600
+    app.height = 600
+    app.buildingCount = 10
+    app.playerRadius = 15
+    app.holeRadius = 25
+    startNewGame(app)
+
+def onKeyPressHelper(key, app):
+    print(key)
+    if   key == 'enter': setActiveScreen('gameScreen')
+    elif key == 'n': 
+        startNewGame(app)
+        setActiveScreen('startScreen')
+
+####################################################
+# startScreen
+####################################################
+def startScreen_onAppStart(app):
+    app.level = 0
+
+def startScreen_onKeyPress(app, key):
+    onKeyPressHelper(key, app)
+    if key == '0':
+        app.level = 0
+        checkLevel(app)
+        startNewGame(app)
+    elif key == '1':
+        app.level = 1
+        checkLevel(app)
+        startNewGame(app)
+    elif key == '2':
+        app.level = 2
+        checkLevel(app)
+        startNewGame(app)
+    levels = ['Easy', 'Medium', 'Hard']
+    app.levelName = levels[app.level]
+
+def startScreen_redrawAll(app):
+    drawLabel("Welcome to Blot Shooter!", app.width/2, app.height/4, size = 25)
+    
+    #levels
+    drawLabel('Press the number of the difficulty you want', app.width/2, app.height/2 - 75, size = 18)
+
+    if app.level == 0:
+        color = 'red'
+    else: 
+        color = 'black'
+    drawLabel(f'Level 0: Easy', app.width/2, app.height/2, size = 15, fill = color)
+    if app.level == 1:
+        color = 'red'
+    else: 
+        color = 'black'
+    drawLabel(f'Level 1: Medium', app.width/2, app.height/2 + 20, size = 15, fill = color)
+    if app.level == 2:
+        color = 'red'
+    else: 
+        color = 'black'
+    drawLabel(f'Level 2: Hard', app.width/2, app.height/2 + 40, size = 15, fill = color)
+
+    drawLabel("Press enter to begin playing", app.width/2, 400, size = 18)
+        
+    
+
+
+####################################################
+# gameScreen
+####################################################
+
+def gameScreen_onKeyPress(app, key):
+    onKeyPressHelper(key, app)
+
+def getBuildingBounds(app, i):
+    width = app.width / app.buildingCount
+    height = app.buildingHeights[i]
+    left = i*width
+    top = app.height - height
+    return (left, top, width, height)
+    
+def checkLevel(app):
+    if app.level == 0:
+        app.playerRadius = 15
+    elif app.level == 1:
+        app.playerRadius = 10
+    elif app.level == 2:
+        app.playerRadius = 5
+    
+        
+def startNewGame(app):
+    app.buildingHeights = [random.randrange(50, 250) for _ in range(app.buildingCount)]
+    app.buildingHeights[0],app.buildingHeights[-1] = random.randrange(150, 200), random.randrange(150, 200)
+    app.colors = ['slateBlue', 'lightCoral', 'mediumVioletRed', 'teal', 'fireBrick']
+    app.buildingColor = [random.choice(app.colors) for _ in range(app.buildingCount)]
+    #new player
+    buildingWidth = app.width / app.buildingCount
+    cx0 = buildingWidth/2
+    
+    cy0 = app.height - app.buildingHeights[0] - app.playerRadius
+    cx1 = app.width - buildingWidth/2
+    cy1 = app.height - app.buildingHeights[-1] - app.playerRadius
+    app.players = [(cx0, cy0, 'lightBlue'), (cx1, cy1, 'pink')]
+    app.currentPlayer = 0
+    app.showBlot = False
+    app.hole = []
+    app.gameOver = False
+    app.numShoots = 0
+    
+def gameScreen_onMousePress(app, mouseX, mouseY):
+    
+    if app.showBlot:
+        return
+    
+    
+    dy = 1 + (app.height - mouseY)*15/app.height #gravity related
+    dx = 1 + mouseX*15/app.width
+    
+    if app.currentPlayer == 0:
+        app.dx, app.dy = dx, -dy # @Todo
+        
+    else:
+        dx = 3 + (app.width-mouseX)*15/app.width
+        app.dx, app.dy = -dx, -dy
+    app.showBlot = True
+    app.blotcx, app.blotcy, app.blotColor = app.players[app.currentPlayer]
+    app.numShoots += 1
+    
+def gameScreen_onStep(app):
+    if app.gameOver:
+        return
+    
+    if app.showBlot:
+        app.blotcx += app.dx
+        app.blotcy += app.dy
+        app.dy += 0.3 # for gravity
+        
+        if app.blotcx < 0 or app.blotcx > app.width or app.blotcy > app.height:
+            app.showBlot = False
+            app.currentPlayer = 1 - app.currentPlayer
+        else:
+            # check game over
+            oppLocation = app.players[1 - app.currentPlayer]
+            oppX = oppLocation[0]
+            oppY = oppLocation[1]
+            radius = app.playerRadius
+            dist = ((oppX-app.blotcx)**2 + (oppY-app.blotcy)**2) ** 0.5
+            if dist <= 2 * app.playerRadius:
+                app.gameOver = True
+            
+            # check building collision
+            for i in range(app.buildingCount):
+                left, top, width, height = getBuildingBounds(app, i)
+                if ((left <= app.blotcx <= left + width) and
+                    top <= app.blotcy <= top + height) and not inHole(app, app.blotcx, app.blotcy):
+                        app.showBlot = False
+                        app.hole.append((app.blotcx, app.blotcy))
+                        # check if player was in the hole
+                        if inHole(app, app.players[app.currentPlayer][0], app.players[app.currentPlayer][1]):
+                            app.gameOver = True
+                        app.currentPlayer = 1 - app.currentPlayer
+
+
+
+
+def inHole(app, x, y):
+    for hole in app.hole:
+        holex, holey = hole
+        dist = ((x-holex)**2 + (y-holey)**2) ** 0.5
+        if dist <= app.holeRadius:
+            return True
+    return False
+    
+    
+def gameScreen_redrawAll(app):
+    drawRect(0, 0, app.width, app.height, fill = 'midnightBlue')
+    
+    drawLabel(f'BlotShooter!', app.width/2, 20, size = 20, bold = True, fill = 'gold')
+    drawLabel('Press n to start a new game!', app.width/2, app.height/6, fill = 'gold')
+    #building
+    for i in range(app.buildingCount):
+        height = app.buildingHeights[i]
+        color = app.buildingColor[i]
+        left, top, width, height = getBuildingBounds(app, i)
+        drawRect(left, top, width, height, fill = color, border = 'black', borderWidth = 2)
+        
+        
+    # player turn
+    drawLabel(f'Current Player: {app.currentPlayer}', app.width/2, 50, size = 20, fill = 'gold' )
+    
+    # num shoot
+    drawLabel(f'# of Shoots: {app.numShoots}', app.width/2, 70, size = 20, fill = 'gold' )
+    
+    #blot crash
+    for cx, cy in app.hole:
+        drawCircle(cx, cy, app.holeRadius, fill = 'midnightBlue')
+        
+    #draw blot
+    if app.showBlot:
+        if app.numShoots % 5 == 0:
+            color = random.choice(app.colors)
+            drawLabel('RAINBOW MODE!', app.width/2, 90, size = 20, fill = color)
+        else:
+            color = app.blotColor
+        drawCircle(app.blotcx, app.blotcy, app.playerRadius, fill = color)
+        
+    if app.gameOver:
+        drawLabel("Game Over", app.width/2, 200, size = 70)
+        
+    #players
+    for player in range(len(app.players)):
+        cx, cy, color = app.players[player]
+        drawCircle(cx, cy, app.playerRadius, fill = color)
+        
+        
+        
+    
+    
+def main():
+    runAppWithScreens(initialScreen='startScreen')
+main()
